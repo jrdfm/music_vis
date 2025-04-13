@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { addToScene } from './threeManager.js';
 
 // Constants
-const numParticles = 10000; // Increased for better effect
+const numParticles = 30000; // Increased from 20000 to 30000
 
 // State
 let particles = null;
@@ -29,7 +29,7 @@ function initParticles(currentSphereColor) {
 
     for (let i = 0; i < numParticles; i++) {
         const i3 = i * 3;
-        const radius = 10; // Larger spread
+        const radius = 15; // Even larger spread for more particles
         positions[i3] = (Math.random() - 0.5) * radius;
         positions[i3 + 1] = (Math.random() - 0.5) * radius;
         positions[i3 + 2] = (Math.random() - 0.5) * radius;
@@ -52,13 +52,57 @@ function initParticles(currentSphereColor) {
     particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
+    // Create a basic circular texture (a simple disk) for star-like particles
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const context = canvas.getContext('2d');
+    
+    // Draw a radial gradient for a soft circular particle (star-like)
+    const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
+    gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.3)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 64, 64);
+    
+    // Create a simple star shape over the circle
+    context.beginPath();
+    const outerRadius = 32;
+    const innerRadius = 16;
+    const spikes = 5;
+    const cx = 32;
+    const cy = 32;
+    
+    for (let i = 0; i < spikes * 2; i++) {
+        const radius = i % 2 === 0 ? outerRadius : innerRadius;
+        const angle = Math.PI * i / spikes;
+        const x = cx + radius * Math.sin(angle);
+        const y = cy + radius * Math.cos(angle);
+        
+        if (i === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+    }
+    
+    context.closePath();
+    context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    context.fill();
+    
+    // Create texture from canvas
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+
     const particleMaterial = new THREE.PointsMaterial({
-        size: 0.4, // Even larger particles for better visibility
+        size: 0.25, // Increased from 0.15 to 0.25
         sizeAttenuation: true,
         vertexColors: true,
         transparent: true,
-        opacity: 0.8,
-        blending: THREE.AdditiveBlending
+        opacity: 1.0, // Full opacity
+        blending: THREE.AdditiveBlending,
+        map: texture,
+        alphaTest: 0.01 // Very low alpha test
     });
     
     particles = new THREE.Points(particleGeometry, particleMaterial);
@@ -155,6 +199,17 @@ function updateParticles(features, deltaTime, currentSphereColor) {
     const beatEffect = features.isBeat ? 2.5 : 1.0; // Increased beat effect
     const dtSeconds = deltaTime / 1000;
 
+    // Update particle size based on audio - make stars twinkle/pulse with the music
+    if (particles.material) {
+        const baseSizeMultiplier = 1.0 + features.volume * 0.5;
+        particles.material.size = 0.25 * baseSizeMultiplier; // Updated base size from 0.15 to 0.25
+        
+        // Add a pulsing effect on beats
+        if (features.isBeat && features.bass > 0.4) {
+            particles.material.size += 0.3 * features.bass; // Slightly increased pulse effect
+        }
+    }
+
     // Update particle colors based on audio
     updateParticleColors(features, dtSeconds);
 
@@ -235,12 +290,12 @@ function updateParticles(features, deltaTime, currentSphereColor) {
         
         // Reset particles that go too far - gradually pull back particles at varying rates based on position
         if (!isNaN(currentPos.x)) {
-            if (currentPos.lengthSq() > 100 * 100) {
-                positions[i3] = (Math.random() - 0.5) * 10;
-                positions[i3 + 1] = (Math.random() - 0.5) * 10;
-                positions[i3 + 2] = (Math.random() - 0.5) * 10;
+            if (currentPos.lengthSq() > 150 * 150) { // Increased boundary for more particles
+                positions[i3] = (Math.random() - 0.5) * 15;
+                positions[i3 + 1] = (Math.random() - 0.5) * 15;
+                positions[i3 + 2] = (Math.random() - 0.5) * 15;
                 velocity.set(0,0,0);
-            } else if (currentPos.lengthSq() > 50 * 50) {
+            } else if (currentPos.lengthSq() > 75 * 75) { // Increased boundary for more particles
                 // For particles that are far but not too far, gently pull them back toward center
                 const pullFactor = 0.01 * features.volume;
                 velocity.sub(currentPos.clone().normalize().multiplyScalar(pullFactor));
