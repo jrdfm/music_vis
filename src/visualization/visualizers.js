@@ -9,6 +9,7 @@ import { initFrequencyBars, updateFrequencyBars, cleanupFrequencyBars } from './
 import { initWaveform, updateWaveform, cleanupWaveform } from './waveformVisualizer.js';
 import { initSnowflakes, updateSnowflakes, cleanupSnowflakes } from './snowflakeVisualizer.js';
 import { initBillboards, updateBillboards, cleanupBillboards } from './billboardsVisualizer.js';
+import { initLines, updateLines, cleanupLines } from './linesVisualizer.js';
 
 // Constants for visualization
 const numInstances = 2000; // For sphere mode
@@ -67,6 +68,9 @@ function cleanupVisuals() {
         case 'billboards':
             cleanupBillboards();
             break;
+        case 'lines':
+            cleanupLines();
+            break;
     }
     
     visElements = {}; // Clear the references
@@ -105,6 +109,9 @@ function initVisualsForMode(mode) {
         case 'billboards':
             visElements.billboards = initBillboards();
             break;
+        case 'lines':
+            visElements.lines = initLines();
+            break;
         default:
             console.warn(`Unknown visualization mode: ${mode}`);
             return false;
@@ -128,6 +135,8 @@ function updateVisualization(features, deltaTime) {
             return updateSnowflakes(features, deltaTime);
         case 'billboards':
             return visElements.billboards ? updateBillboards(features, deltaTime) : false;
+        case 'lines':
+            return visElements.lines ? updateLines(features, deltaTime) : false;
         default:
             return false;
     }
