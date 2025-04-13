@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Inline critical progress bar styles for immediate loading */
+        #progressBarContainer {
+            position: relative;
+            cursor: pointer;
+            touch-action: none; /* Prevent scrolling on mobile */
+        }
+        #progressBar {
+            position: absolute;
+            height: 100%;
+            background-color: #007bff;
+            will-change: width;
+            transform: translateZ(0);
+            left: 0;
+            top: 0;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizerCanvas"></canvas>
+
+    <div id="playbackControls">
+        <button id="playPauseButton" class="icon-button" disabled>▶️</button>
+        <span id="currentTime">0:00</span>
+        <div id="progressBarContainer">
+            <div id="progressBar" style="width: 0%;"></div>
+        </div>
+        <span id="totalDuration">0:00</span>
+
+        <label for="visModeSelect" class="control-label">Mode:</label>
+        <select id="visModeSelect">
+            <option value="spheresAndParticles" selected>Particles</option>
+            <option value="frequencyBars">Frequency Bars</option>
+            <option value="waveform">Waveform</option>
+            <option value="snowflakes">Snowflakes</option>
+            <option value="billboards">Billboards</option>
+        </select>
+
+        <label for="sphereColorPicker" class="control-label">Sphere Color:</label>
+        <input type="color" id="sphereColorPicker" value="#00ff00"> <!-- Default Green -->
+
+        <label for="volumeSlider" class="volume-label">🔊</label>
+        <input type="range" id="volumeSlider" min="0" max="100" value="20" disabled>
+    </div>
+
+    <div id="fileInputArea">
+        <label for="audioFile" id="fileLabel">Select Audio File</label>
+        <input type="file" id="audioFile" accept="audio/*">
+    </div>
+
+    <!-- Main application script - Import from the src module structure -->
+    <script type="module" src="src/main.js"></script>
+</body>
+</html> 

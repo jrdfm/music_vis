@@ -1,0 +1,124 @@
+/* Basic Reset & Body Style */
+body {
+    margin: 0;
+    overflow: hidden; /* Prevent scrollbars */
+    background-color: #000;
+    color: #eee;
+    font-family: sans-serif;
+    display: flex; /* Use flexbox for layout */
+    flex-direction: column; /* Stack elements vertically */
+    height: 100vh; /* Full viewport height */
+}
+
+/* Canvas takes up most space */
+#visualizerCanvas {
+    display: block; /* Remove extra space below canvas */
+    width: 100%;
+    flex-grow: 1; /* Allow canvas to grow and fill available space */
+    min-height: 0; /* Prevent canvas from overflowing flex container */
+}
+
+/* Playback Controls Container */
+#playbackControls {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    background-color: rgba(20, 20, 20, 0.8);
+    width: 100%;
+    box-sizing: border-box; /* Include padding in width */
+    gap: 10px; /* Space between controls */
+}
+
+/* Progress Bar */
+#progressBarContainer {
+    flex-grow: 1; /* Take up remaining space */
+    height: 8px;
+    background-color: #555;
+    border-radius: 4px;
+    cursor: pointer;
+    overflow: hidden; /* Ensure inner bar stays within bounds */
+    position: relative; /* For absolute positioning of inner bar */
+    margin: 0 5px; /* Add some margin for better visibility */
+}
+
+#progressBar {
+    width: 0; /* Starts empty */
+    height: 100%;
+    background-color: #007bff; /* Blue progress */
+    border-radius: 4px;
+    transition: width 0.1s linear; /* Smooth transition for progress */
+    will-change: width; /* Hint to browser that this property will change */
+    transform: translateZ(0); /* Force hardware acceleration */
+    backface-visibility: hidden; /* Reduce composite layers */
+    position: absolute; /* Ensure proper positioning */
+    left: 0;
+    top: 0;
+    min-width: 1px; /* Ensure there's always a visible line */
+}
+
+/* Time Displays */
+#currentTime,
+#totalDuration {
+    font-size: 0.9em;
+    min-width: 35px; /* Ensure space for time */
+    text-align: center;
+    color: #ccc;
+}
+
+/* Buttons */
+.icon-button {
+    background: none;
+    border: none;
+    color: #eee;
+    font-size: 1.5em; /* Adjust icon size */
+    cursor: pointer;
+    padding: 0 5px;
+    line-height: 1; /* Align icon vertically */
+}
+
+.icon-button:disabled {
+    color: #666;
+    cursor: not-allowed;
+}
+
+/* Volume Slider */
+.volume-label {
+    font-size: 1.2em;
+}
+
+#volumeSlider {
+    cursor: pointer;
+    max-width: 80px; /* Limit slider width */
+}
+
+/* File Input Area (Subtle Title) */
+#fileInputArea {
+    padding: 5px 15px;
+    text-align: center;
+    background-color: rgba(10, 10, 10, 0.7);
+}
+
+#fileLabel {
+    display: inline-block; /* Allow styling */
+    padding: 8px 15px;
+    background-color: #333;
+    color: #eee;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-size: 0.9em;
+}
+
+#fileLabel:hover {
+    background-color: #444;
+}
+
+#audioFile {
+    display: none; /* Hide the default file input */
+}
+
+/* Style disabled elements */
+input[type="range"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+} 
