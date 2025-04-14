@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { addToScene } from './threeManager.js';
 
 // Constants
-const segments = 2000; // Reduced further for better performance
+const segments = 600; // Keep reduced count for performance
 const r = 800;
 
 // State
@@ -13,6 +13,32 @@ let rotationX = 0;
 let rotationY = 0;
 let rotationZ = 0;
 let lastBeatTime = 0;
+let originalPositions = null; // Store original positions once at initialization
+let frameCount = 0;
+let expansionFactor = 1.0; // Track expansion as music progresses
+
+// Precompute sin/cos tables (huge performance boost by avoiding trig calculations)
+const SIN_TABLE_SIZE = 1000;
+const sinTable = new Float32Array(SIN_TABLE_SIZE);
+const cosTable = new Float32Array(SIN_TABLE_SIZE);
+(function initTables() {
+    for (let i = 0; i < SIN_TABLE_SIZE; i++) {
+        const angle = (i / SIN_TABLE_SIZE) * Math.PI * 2;
+        sinTable[i] = Math.sin(angle);
+        cosTable[i] = Math.cos(angle);
+    }
+})();
+
+// Fast sin/cos lookup (much faster than Math.sin/cos)
+function fastSin(angle) {
+    const index = ((angle % (Math.PI * 2)) / (Math.PI * 2) * SIN_TABLE_SIZE) | 0;
+    return sinTable[index >= 0 ? index : index + SIN_TABLE_SIZE];
+}
+
+function fastCos(angle) {
+    const index = ((angle % (Math.PI * 2)) / (Math.PI * 2) * SIN_TABLE_SIZE) | 0;
+    return cosTable[index >= 0 ? index : index + SIN_TABLE_SIZE];
+}
 
 // Initialize the lines visualization
 function initLines() {
@@ -45,14 +71,20 @@ function initLines() {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     
+    // Store original positions once for later use
+    originalPositions = new Float32Array(positions);
+    
     // Generate morph targets for animation
     generateMorphTargets(geometry);
     geometry.computeBoundingSphere();
 
     line = new THREE.Line(geometry, material);
     
-    // Scale down to fit in our scene better
-    line.scale.set(0.05, 0.05, 0.05);
+    // Scale down the initial size to be more subtle at start
+    line.scale.set(0.07, 0.07, 0.07); // Reduced from 0.12
+    
+    // Reset expansion when initialized
+    expansionFactor = 0.7; // Start smaller than 1.0
     
     // Add to scene
     addToScene(line);
@@ -76,79 +108,81 @@ function generateMorphTargets(geometry) {
     geometry.morphAttributes.position = [morphTarget];
 }
 
-// Update lines based on audio features - optimized and more responsive
+// Update lines based on audio features - heavily optimized for performance
 function updateLines(features, deltaTime) {
     if (!line) return false;
+    
+    // Increment frame counter
+    frameCount++;
     
     const dtSeconds = deltaTime / 1000;
     const now = performance.now();
     
-    // Audio-reactive behavior - much more direct and responsive
+    // Audio-reactive behavior - optimize calculations
     if (features.volume > 0.05) {
-        // Immediately apply audio features to rotation (no gradual interpolation)
-        // Amplify all movements for more dramatic effect
+        // Update expansion factor based on audio features - FASTER expansion
+        // This makes the visualization fill more of the screen as music progresses
+        const targetExpansion = 1.0 + features.volume * 6.0; // Increased range to compensate for smaller start
+        expansionFactor += (targetExpansion - expansionFactor) * 0.04; // Slightly slower than before
+        expansionFactor = Math.min(5.5, expansionFactor); // Allow slightly larger max expansion
         
-        // Direct mapping of audio features to rotation - INCREASED MULTIPLIERS
-        rotationX = features.bass * 5.0; // Much stronger bass influence
-        rotationY = features.mid * 4.0;  // Stronger mid influence
-        rotationZ = features.treble * 2.0; // Direct treble to Z axis
+        // Direct mapping of audio features to rotation with vectorized calculation
+        rotationX = features.bass * 5.0; 
+        rotationY = features.mid * 4.0;  
+        rotationZ = features.treble * 2.0;
         
         // Add position-based rotation to create more dynamic motion
-        // This ensures background elements also appear to move
-        line.position.y = Math.sin(now * 0.001) * features.volume * 10;
+        // Use fast trig functions
+        line.position.y = fastSin(now * 0.001) * features.volume * 20; // Doubled movement
         
         // Immediate response to beats with large movements
         if (features.isBeat) {
             lastBeatTime = now;
             
-            // Create dramatic movement on beat
-            const beatIntensity = 1.0 + features.volume * 2;
+            // Create dramatic movement on beat - use simpler calculations
+            const beatIntensity = 1.0 + features.volume * 3; // Increased intensity
             
             // Apply dramatic rotation based on dominant frequency
             if (features.bass > features.mid && features.bass > features.treble) {
-                // Bass beat - dramatic X rotation
-                rotationX += beatIntensity * 2.0;
-                // Add a jump effect
-                line.position.y += beatIntensity * 5;
+                rotationX += beatIntensity * 3.0; // More rotation
+                line.position.y += beatIntensity * 10; // More displacement
+                // Add extra expansion on bass beats
+                expansionFactor += 0.3; // 3x more expansion on beats
             } else if (features.mid > features.treble) {
-                // Mid beat - dramatic Y rotation
-                rotationY += beatIntensity * 2.0;
-                // Add a sideways movement
-                line.position.x = (Math.random() > 0.5 ? 1 : -1) * beatIntensity * 3;
+                rotationY += beatIntensity * 3.0; // More rotation
+                line.position.x = (Math.random() > 0.5 ? 1 : -1) * beatIntensity * 6; // More displacement
             } else {
-                // Treble beat - dramatic Z rotation
-                rotationZ += beatIntensity * 1.5;
-                // Add a forward movement
-                line.position.z = beatIntensity * 3;
+                rotationZ += beatIntensity * 2.5; // More rotation
+                line.position.z = beatIntensity * 6; // More displacement
             }
             
             // Direct strong morph on beat
-            morphInfluence = 0.8 + (features.volume * 0.5);
+            morphInfluence = 0.9 + (features.volume * 0.5); // More morphing
         } else {
             // Even without beats, keep morphing based on bass
-            morphInfluence = features.bass * 0.9; // Higher baseline morph influence
+            morphInfluence = features.bass;
             
-            // Slowly return position to center when not on a beat
-            line.position.x *= 0.9;
-            line.position.z *= 0.9;
+            // Slower return to center for more visible movement
+            line.position.x *= 0.95; // Slower decay
+            line.position.z *= 0.95; // Slower decay
         }
         
-        // Apply rotations directly - no interpolation for faster response
+        // Apply rotations directly for immediate response
         line.rotation.x = rotationX;
         line.rotation.y = rotationY;
         line.rotation.z = rotationZ;
         
-        // *** NEW: Directly modify vertex positions for more visible movement ***
-        updateVertexPositions(features, now);
+        // Always update ALL vertex positions for fluid movement of all lines
+        updateAllVertexPositions(features, now);
         
-        // Update ALL colors for maximum impact
+        // Update colors EVERY FRAME to be more responsive
         updateAllColors(features);
         
     } else {
         // No audio playing - gentle continuous rotation
-        rotationX = Math.sin(now * 0.0005) * 0.2;
-        rotationY = Math.cos(now * 0.0004) * 0.2;
-        rotationZ = 0;
+        rotationX = fastSin(now * 0.0005) * 0.5; // More ambient rotation
+        rotationY = fastCos(now * 0.0004) * 0.5; // More ambient rotation
+        rotationZ = fastSin(now * 0.0003) * 0.3; // Added Z rotation
         
         line.rotation.x = rotationX;
         line.rotation.y = rotationY;
@@ -157,11 +191,18 @@ function updateLines(features, deltaTime) {
         // Reset position when no audio
         line.position.set(0, 0, 0);
         
-        // Directly modify vertex positions with gentle wobble
-        updateVertexPositions(null, now);
+        // Gradually reduce expansion when no music - return to smaller base size
+        expansionFactor *= 0.98; // Faster reduction
+        if (expansionFactor < 0.7) expansionFactor = 0.7; // Match initial smaller size
+        
+        // Still update all vertices for silent mode
+        updateAllVertexPositions(null, now);
+        
+        // Update colors in silent mode too
+        updateAllColors({bass: 0.1, mid: 0.1, treble: 0.1, volume: 0.1, isBeat: false});
         
         // Quickly decrease morph influence when audio stops
-        morphInfluence *= 0.9;
+        morphInfluence *= 0.95;
     }
     
     // Apply morph influence directly
@@ -172,51 +213,58 @@ function updateLines(features, deltaTime) {
     return true;
 }
 
-// NEW FUNCTION: Update vertex positions directly to create internal movement
-function updateVertexPositions(features, now) {
-    if (!line || !line.geometry) return;
+// Updated to ensure ALL vertices move and expand with music
+function updateAllVertexPositions(features, now) {
+    if (!line || !line.geometry || !originalPositions) return;
     
     const positions = line.geometry.attributes.position.array;
-    const originalPositions = line.geometry.attributes.position.clone().array;
     
-    // Calculate displacement factors based on audio
-    const bassDisplacement = features ? features.bass * 15.0 : 0.5;
-    const midDisplacement = features ? features.mid * 10.0 : 0.3;
-    const trebleDisplacement = features ? features.treble * 5.0 : 0.2;
+    // Pre-calculate common values outside the loop for performance
+    const bassDisp = features ? features.bass * 30.0 : 1.0; // Doubled displacement
+    const midDisp = features ? features.mid * 20.0 : 0.8;   // Doubled displacement
+    const trbDisp = features ? features.treble * 10.0 : 0.5; // Doubled displacement
+    const isBeat = features && features.isBeat;
+    const beatFactor = isBeat ? features.volume * 40 : 0; // Doubled beat effect
     
-    // Each vertex moves independently based on its position and the audio
+    // Time factors (calculate once)
+    const t1 = now * 0.001;
+    const t2 = now * 0.0011;
+    const t3 = now * 0.0009;
+    
+    // Update ALL vertices for fluid movement
     for (let i = 0; i < segments; i++) {
         const i3 = i * 3;
         
-        // Get the original position as the base
-        const x = originalPositions[i3];
-        const y = originalPositions[i3 + 1];
-        const z = originalPositions[i3 + 2];
+        // Get original position (faster direct array access)
+        const x = originalPositions[i3] * expansionFactor; // Apply expansion
+        const y = originalPositions[i3 + 1] * expansionFactor; // Apply expansion
+        const z = originalPositions[i3 + 2] * expansionFactor; // Apply expansion
         
-        // Distance from center influences movement amount (farther points move more)
-        const distFromCenter = Math.sqrt(x*x + y*y + z*z) / (r/2);
+        // Faster distance approximation (Manhattan distance)
+        const dist = (Math.abs(x) + Math.abs(y) + Math.abs(z)) / r; 
         
         if (features && features.volume > 0.05) {
-            // Audio-driven movement
+            // Use lookup tables for sin/cos with simplified phase calc
+            const px = t1 + i * 0.01;
+            const py = t2 + i * 0.013;
+            const pz = t3 + i * 0.017;
             
-            // Create unique, varying movements for each vertex based on position and time
-            const xNoise = Math.sin(now * 0.001 + i * 0.1) * bassDisplacement * distFromCenter;
-            const yNoise = Math.cos(now * 0.0011 + i * 0.13) * midDisplacement * distFromCenter;
-            const zNoise = Math.sin(now * 0.0009 + i * 0.17) * trebleDisplacement * distFromCenter;
+            // MORE DRAMATIC noise displacement
+            const xNoise = fastSin(px) * bassDisp * dist;
+            const yNoise = fastCos(py) * midDisp * dist;
+            const zNoise = fastSin(pz) * trbDisp * dist;
             
-            // Add extra explosive movement on beat
-            let beatFactor = 0;
-            if (features.isBeat) {
-                beatFactor = features.volume * 20 * distFromCenter;
+            if (isBeat) {
+                // Fast direction calculation
+                const dirX = x > 0 ? 1 : -1;
+                const dirY = y > 0 ? 1 : -1;
+                const dirZ = z > 0 ? 1 : -1;
                 
-                // Direction based on vertex position (create radial explosion)
-                const dirX = x === 0 ? 0 : x / Math.abs(x);
-                const dirY = y === 0 ? 0 : y / Math.abs(y);
-                const dirZ = z === 0 ? 0 : z / Math.abs(z);
-                
-                positions[i3] = x + (dirX * beatFactor) + xNoise;
-                positions[i3 + 1] = y + (dirY * beatFactor) + yNoise;
-                positions[i3 + 2] = z + (dirZ * beatFactor) + zNoise;
+                // Apply movement - enhanced by expansion factor
+                const localBeat = beatFactor * dist;
+                positions[i3] = x + dirX * localBeat + xNoise;
+                positions[i3 + 1] = y + dirY * localBeat + yNoise;
+                positions[i3 + 2] = z + dirZ * localBeat + zNoise;
             } else {
                 // Normal audio-reactive movement
                 positions[i3] = x + xNoise;
@@ -224,10 +272,10 @@ function updateVertexPositions(features, now) {
                 positions[i3 + 2] = z + zNoise;
             }
         } else {
-            // Gentle ambient movement when no audio is playing
-            positions[i3] = x + Math.sin(now * 0.0005 + i * 0.05) * 2 * distFromCenter;
-            positions[i3 + 1] = y + Math.cos(now * 0.0007 + i * 0.06) * 2 * distFromCenter;
-            positions[i3 + 2] = z + Math.sin(now * 0.0006 + i * 0.07) * 2 * distFromCenter;
+            // More noticeable ambient movement when silent
+            positions[i3] = x + fastSin(t1 * 0.5 + i * 0.05) * dist * 2.0;
+            positions[i3 + 1] = y + fastCos(t2 * 0.5 + i * 0.06) * dist * 2.0;
+            positions[i3 + 2] = z + fastSin(t3 * 0.5 + i * 0.07) * dist * 2.0;
         }
     }
     
@@ -235,85 +283,97 @@ function updateVertexPositions(features, now) {
     line.geometry.attributes.position.needsUpdate = true;
 }
 
-// Update ALL colors every frame for maximum visual impact
+// Update ALL colors for better responsiveness - ENHANCED COLOR CHANGES
 function updateAllColors(features) {
     if (!line || !line.geometry) return;
     
     const colors = line.geometry.attributes.color.array;
     const positions = line.geometry.attributes.position.array;
     
-    // Dramatic color effects based on audio
-    const hueShift = features.volume * 3.0; // More aggressive hue shifting
+    // Precalculate base color values - MUCH MORE DRAMATIC COLOR CHANGES
+    const bassColor = 0.3 + features.bass * 3.0;      // More range
+    const midColor = 0.3 + features.mid * 3.0;        // More range
+    const trebleColor = 0.3 + features.treble * 3.0;  // More range
     
-    // Super-vibrant color values - exceeding 1.0 for more intensity
-    const bassColor = 0.7 + (features.bass * 2.0);
-    const midColor = 0.7 + (features.mid * 2.0);
-    const trebleColor = 0.7 + (features.treble * 2.0);
+    // Determine dominant frequency once
+    const bassDominant = features.bass > features.mid && features.bass > features.treble;
+    const midDominant = !bassDominant && features.mid > features.treble;
     
-    // Extra-vibrant beat effect
-    const beatBoost = features.isBeat ? 1.0 : 0;
+    // Beat flash calculation - STRONGER FLASH
+    const beatBoost = features.isBeat ? (1.5 + features.volume * 1.5) : 0;
     
     // Update ALL colors for consistent effect
     for (let i = 0; i < segments; i++) {
         const i3 = i * 3;
         
-        // Get position for spatial color variation
+        // Get position for intensity calculation
         const x = positions[i3];
         const y = positions[i3 + 1];
         const z = positions[i3 + 2];
-        const dist = Math.sqrt(x*x + y*y + z*z) / (r/2);
         
-        // Base colors from audio features
+        // Fast distance approximation
+        const dist = (Math.abs(x) + Math.abs(y) + Math.abs(z)) / (r * 1.5);
+        
+        // Base colors - dynamic with music
         let red = bassColor;
         let green = midColor;
         let blue = trebleColor;
         
-        // Apply spatial variation based on position
-        const positionFactor = (dist * 0.5) + 0.5; // 0.5-1.0 range
-        
-        // Dominant frequency determines color emphasis
-        if (features.bass > features.mid && features.bass > features.treble) {
-            // Bass dominant - red emphasis
-            red *= 1.5 * positionFactor;
-            green *= 0.5;
-            blue *= 0.7;
-        } else if (features.mid > features.treble) {
-            // Mid dominant - green emphasis
-            green *= 1.5 * positionFactor;
-            red *= 0.7;
-            blue *= 0.5;
+        // Apply STRONGER color emphasis based on dominant frequency
+        if (bassDominant) {
+            red *= 2.0;       // Was 1.5
+            green *= 0.3;     // Was 0.5 - More contrast
+            blue *= 0.3;      // Was 0.7 - More contrast
+        } else if (midDominant) {
+            green *= 2.0;     // Was 1.5
+            red *= 0.3;       // Was 0.7 - More contrast
+            blue *= 0.3;      // Was 0.5 - More contrast
         } else {
-            // Treble dominant - blue emphasis
-            blue *= 1.5 * positionFactor;
-            red *= 0.5;
-            green *= 0.7;
+            blue *= 2.0;      // Was 1.5
+            red *= 0.3;       // Was 0.5 - More contrast
+            green *= 0.3;     // Was 0.7 - More contrast
         }
         
-        // Super intense beat flash
-        if (features.isBeat) {
-            const beatIntensity = 1.0 + features.volume;
-            red += beatIntensity;
-            green += beatIntensity;
-            blue += beatIntensity;
+        // Apply intensity based on distance and expansion - MORE DRAMATIC
+        const intensityFactor = 0.5 + dist * expansionFactor; // More variation
+        red *= intensityFactor;
+        green *= intensityFactor;
+        blue *= intensityFactor;
+        
+        // Add beat flash - STRONGER FLASH
+        if (beatBoost > 0) {
+            red += beatBoost * 1.5;
+            green += beatBoost * 1.5;
+            blue += beatBoost * 1.5;
         }
         
-        // Apply aggressive colors, then clamp
-        colors[i3] = Math.min(1.0, red);
-        colors[i3 + 1] = Math.min(1.0, green);
-        colors[i3 + 2] = Math.min(1.0, blue);
+        // Add some pulsing even without beats - based on frame count
+        const pulse = 0.15 * fastSin(frameCount * 0.05);
+        red += pulse;
+        green += pulse;
+        blue += pulse;
+        
+        // Fast clamping
+        colors[i3] = red > 1 ? 1 : red;
+        colors[i3 + 1] = green > 1 ? 1 : green;
+        colors[i3 + 2] = blue > 1 ? 1 : blue;
     }
     
+    // Flag colors for update
     line.geometry.attributes.color.needsUpdate = true;
 }
 
 // Clean up lines
 function cleanupLines() {
     line = null;
+    originalPositions = null;
     morphInfluence = 0;
     rotationX = 0;
     rotationY = 0;
     rotationZ = 0;
     lastBeatTime = 0;
+    frameCount = 0;
+    expansionFactor = 1.0;
 }
 
 export { initLines, updateLines, cleanupLines }; 
